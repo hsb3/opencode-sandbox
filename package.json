@@ -1,0 +1,11 @@
+{
+  "name": "opencode-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build --compile src/cli.ts --outfile dist/opencode-sandbox",
+    "install-local": "bun build --compile src/cli.ts --outfile $HOME/.local/bin/opencode-sandbox"
+  }
+}
