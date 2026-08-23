@@ -56,7 +56,28 @@ When you're done:
 opencode-sandbox destroy scratch --yes
 ```
 
-`destroy` removes the containers and their volumes, including the workspace.
+`destroy` removes the containers and their volumes, including the workspace —
+get anything worth keeping out first (see below).
+
+## Getting work out
+
+No credentials ever enter the instance; the host reaches in instead. For work
+on a git branch, run the line `fetch-url` prints from your project's repo —
+git speaks its wire protocol over `docker exec`, so the branch, its history,
+and its files land locally for review before you push with your own
+credentials:
+
+```
+opencode-sandbox fetch-url scratch
+git -c protocol.ext.allow=user fetch 'ext::docker exec -i ocsbx-scratch-opencode-1 git -C /workspace upload-pack .' <branch>:sandbox/<branch>
+```
+
+For loose artifacts, or a full salvage before `destroy`, copy the whole
+workspace to a host directory (works even while the instance is stopped):
+
+```
+opencode-sandbox export scratch ./scratch-out
+```
 
 A web UI is available too, behind `--web` on create; without it, the MCP
 bridge is the only interface.

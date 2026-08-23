@@ -6,6 +6,7 @@ import { createServer } from "node:net"
 import {
   NAME_RE,
   basePort,
+  fetchLine,
   projectName,
   registerLine,
   renderCompose,
@@ -13,7 +14,7 @@ import {
   type Instance,
 } from "./compose.ts"
 
-const VERSION = "0.1.1"
+const VERSION = "0.1.2"
 const ROOT = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "opencode-sandbox")
 
 function die(msg: string): never {
@@ -93,9 +94,10 @@ const compose = (inst: Instance, args: string[], quiet = false) =>
     quiet,
   })
 
+const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
+
 function seed(inst: Instance, from: string): boolean {
   const vol = `${projectName(inst.name)}_workspace`
-  const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
   // COPYFILE_DISABLE stops macOS tar from writing AppleDouble `._*` siblings into
   // the workspace, where the agent would see them as real files. The chown matters:
   // tar preserves the host UID, and root-owned git in the container refuses a
@@ -181,6 +183,17 @@ function list() {
   }
 }
 
+// Inverse of seed: workspace volume → host directory. Reads the volume
+// directly, so it works even when the instance's containers are stopped.
+function exportWs(inst: Instance, to: string) {
+  const vol = `${projectName(inst.name)}_workspace`
+  if (existsSync(to) && readdirSync(to).length) die(`refusing to export into a non-empty directory: ${to}`)
+  mkdirSync(to, { recursive: true })
+  const r = run(["sh", "-c", `docker run --rm -v ${vol}:/w alpine tar -C /w -cf - . | tar -C ${q(to)} -xf -`])
+  if (r.code !== 0) die(`exporting /workspace of '${inst.name}' failed`)
+  console.log(`exported /workspace of '${inst.name}' to ${to}`)
+}
+
 async function destroy(argv: string[]) {
   const name = argv[0]
   if (!name) die("usage: opencode-sandbox destroy <name> [--yes]")
@@ -210,6 +223,15 @@ switch (cmd) {
     if (!argv[1]) die("usage: opencode-sandbox url <name>")
     console.log(registerLine(load(argv[1])))
     break
+  case "fetch-url":
+    if (!argv[1]) die("usage: opencode-sandbox fetch-url <name>")
+    console.log(fetchLine(load(argv[1])))
+    break
+  case "export":
+    if (!argv[1] || !argv[2]) die("usage: opencode-sandbox export <name> <dir>")
+    requireDocker()
+    exportWs(load(argv[1]), argv[2])
+    break
   case "destroy":
   case "rm":
     await destroy(argv.slice(1))
@@ -224,6 +246,8 @@ switch (cmd) {
   create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--tag <t>] [--web]
   list
   url <name>            print the 'claude mcp add' line for an instance
+  fetch-url <name>      print the credential-free 'git fetch' line that pulls a branch out
+  export <name> <dir>   copy /workspace out to a host directory
   destroy <name> [--yes]
 
 Instances live in ${ROOT}. The MCP bridge binds 127.0.0.1 only and has no

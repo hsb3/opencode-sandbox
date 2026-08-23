@@ -113,3 +113,12 @@ export function mcpUrl(inst: Instance) {
 export function registerLine(inst: Instance) {
   return `claude mcp add --transport http ${inst.name} ${mcpUrl(inst)}`
 }
+
+/**
+ * Host-side, credential-free branch extraction: git speaks its wire protocol
+ * over `docker exec` stdio, so nothing inside the instance ever needs a token.
+ * The ext transport is often blocked by hardened git configs — hence the -c.
+ */
+export function fetchLine(inst: Instance) {
+  return `git -c protocol.ext.allow=user fetch 'ext::docker exec -i ${projectName(inst.name)}-opencode-1 git -C /workspace upload-pack .' <branch>:sandbox/<branch>`
+}

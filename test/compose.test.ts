@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { NAME_RE, basePort, projectName, registerLine, renderCompose, renderEnv } from "../src/compose.ts"
+import { NAME_RE, basePort, fetchLine, projectName, registerLine, renderCompose, renderEnv } from "../src/compose.ts"
 
 const inst = { name: "demo", mcpPort: 4310, webPort: 4311, tag: "latest", web: false }
 
@@ -59,6 +59,12 @@ test("env forwards only provider keys that are actually set", () => {
 
 test("register line is the exact command a consumer pastes", () => {
   expect(registerLine(inst)).toBe("claude mcp add --transport http demo http://127.0.0.1:4310/mcp")
+})
+
+test("fetch line pulls a branch out over docker exec — no credentials, ext transport opted in", () => {
+  expect(fetchLine(inst)).toBe(
+    "git -c protocol.ext.allow=user fetch 'ext::docker exec -i ocsbx-demo-opencode-1 git -C /workspace upload-pack .' <branch>:sandbox/<branch>",
+  )
 })
 
 test("compose project name is namespaced so instances never collide with the fork's stacks", () => {
