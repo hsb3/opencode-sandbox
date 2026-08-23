@@ -21,10 +21,12 @@ from this repo's GitHub Releases.
 
 ## Quickstart
 
-Create an instance. Any provider API key already in your shell
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`,
-`OPENROUTER_API_KEY`) is forwarded into it at create time — there's no UI
-login step and no `auth.json` to manage.
+Create an instance. No API key is required — opencode ships with free default
+models (`opencode models` lists them), so a fresh instance works immediately.
+Any provider API key already in your shell (`ANTHROPIC_API_KEY`,
+`OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `OPENROUTER_API_KEY`) is
+forwarded into it at create time for the paid providers — there's no UI login
+step and no `auth.json` to manage.
 
 ```
 opencode-sandbox create scratch --seed ./my-project --config ./opencode.jsonc
