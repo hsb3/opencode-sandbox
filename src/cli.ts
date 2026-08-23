@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdirSync, existsSync, readdirSync, rmSync, writeFileSync, readFileSync, copyFileSync, statSync } from "node:fs"
+import { mkdirSync, existsSync, readdirSync, rmSync, writeFileSync, readFileSync, copyFileSync, statSync, chmodSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { createServer } from "node:net"
@@ -16,7 +16,7 @@ import {
   type Publish,
 } from "./compose.ts"
 
-const VERSION = "0.2.0"
+const VERSION = "0.2.1"
 const ROOT = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "opencode-sandbox")
 
 function die(msg: string): never {
@@ -44,9 +44,15 @@ const dir = (name: string) => join(ROOT, name)
 
 function load(name: string): Instance {
   const d = dir(name)
-  if (!existsSync(join(d, ".env"))) die(`no instance named '${name}' (try: opencode-sandbox list)`)
+  const envPath = join(d, ".env")
+  if (!existsSync(envPath)) die(`no instance named '${name}' (try: opencode-sandbox list)`)
+  // self-heal instances created before .env was locked down (issue #3): tighten on read,
+  // but a foreign-owned or read-only file must never crash a plain `list`.
+  try {
+    if ((statSync(envPath).mode & 0o777) !== 0o600) chmodSync(envPath, 0o600)
+  } catch {}
   const env: Record<string, string> = {}
-  for (const line of readFileSync(join(d, ".env"), "utf8").split("\n")) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
     const i = line.indexOf("=")
     if (i > 0) env[line.slice(0, i)] = line.slice(i + 1)
   }
@@ -154,9 +160,11 @@ async function create(argv: string[]) {
   const inst: Instance = { name, mcpPort, webPort, apiPort, publish, tag: flag("--tag") || "latest", web: argv.includes("--web") }
 
   const d = dir(name)
-  mkdirSync(join(d, "config"), { recursive: true })
+  // 0700/0600: .env holds forwarded provider API keys (issue #3); mode on a recursive
+  // mkdirSync applies to every directory it creates, so this also locks down config/.
+  mkdirSync(join(d, "config"), { recursive: true, mode: 0o700 })
   writeFileSync(join(d, "compose.yml"), renderCompose(apiPort, publish))
-  writeFileSync(join(d, ".env"), renderEnv(inst, process.env))
+  writeFileSync(join(d, ".env"), renderEnv(inst, process.env), { mode: 0o600 })
   if (inst.web) writeFileSync(join(d, ".web"), "")
   const cfg = flag("--config")
   if (cfg) {
