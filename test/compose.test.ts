@@ -30,7 +30,19 @@ test("service is named opencode — the web image's baked nginx.conf proxies to 
 })
 
 test("published ports stay bound to loopback (the bridge has no inbound auth)", () => {
-  for (const line of renderCompose().split("\n").filter((l) => l.includes("ports:"))) expect(line).toContain("127.0.0.1:")
+  for (const y of [renderCompose(), renderCompose(4097)])
+    for (const line of y.split("\n").filter((l) => l.includes("ports:"))) expect(line).toContain("127.0.0.1:")
+})
+
+test("container home is /root so dotfiles never pollute the workspace", () => {
+  expect(renderCompose()).toContain("HOME: /root")
+})
+
+test("api port is published only when asked for, and lands on the backend", () => {
+  expect(renderCompose()).not.toContain("API_PORT")
+  expect(renderCompose(4400)).toContain('ports: ["127.0.0.1:${API_PORT}:4097"]')
+  expect(renderEnv({ ...inst, apiPort: 4400 }, {})).toContain("API_PORT=4400")
+  expect(renderEnv(inst, {})).not.toContain("API_PORT")
 })
 
 test("web is behind a profile so the MCP bridge is the default surface", () => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdirSync, existsSync, readdirSync, rmSync, writeFileSync, readFileSync, copyFileSync } from "node:fs"
+import { mkdirSync, existsSync, readdirSync, rmSync, writeFileSync, readFileSync, copyFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import { createServer } from "node:net"
@@ -13,7 +13,7 @@ import {
   type Instance,
 } from "./compose.ts"
 
-const VERSION = "0.1.0"
+const VERSION = "0.1.1"
 const ROOT = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "opencode-sandbox")
 
 function die(msg: string): never {
@@ -51,6 +51,7 @@ function load(name: string): Instance {
     name,
     mcpPort: Number(env.MCP_PORT),
     webPort: Number(env.WEB_PORT),
+    apiPort: env.API_PORT ? Number(env.API_PORT) : undefined,
     tag: env.OC_TAG || "latest",
     web: existsSync(join(d, ".web")),
   }
@@ -96,9 +97,15 @@ function seed(inst: Instance, from: string): boolean {
   const vol = `${projectName(inst.name)}_workspace`
   const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`
   // COPYFILE_DISABLE stops macOS tar from writing AppleDouble `._*` siblings into
-  // the workspace, where the agent would see them as real files.
+  // the workspace, where the agent would see them as real files. The chown matters:
+  // tar preserves the host UID, and root-owned git in the container refuses a
+  // workspace owned by anyone else ("dubious ownership").
   const r = run(
-    ["sh", "-c", `tar -C ${q(from)} -cf - . | docker run --rm -i -v ${vol}:/w alpine tar -C /w -xf -`],
+    [
+      "sh",
+      "-c",
+      `tar -C ${q(from)} --exclude .DS_Store -cf - . | docker run --rm -i -v ${vol}:/w alpine sh -c 'tar -C /w -xf - && chown -R 0:0 /w'`,
+    ],
     { env: { COPYFILE_DISABLE: "1" } },
   )
   return r.code === 0
@@ -106,7 +113,7 @@ function seed(inst: Instance, from: string): boolean {
 
 async function create(argv: string[]) {
   const name = argv[0]
-  if (!name || name.startsWith("-")) die("usage: opencode-sandbox create <name> [--seed <dir>] [--config <file>] [--port <n>] [--web]")
+  if (!name || name.startsWith("-")) die("usage: opencode-sandbox create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--web]")
   if (!NAME_RE.test(name)) die(`invalid name '${name}' — use lowercase letters, digits and hyphens (max 31)`)
   if (existsSync(dir(name))) die(`instance '${name}' already exists (destroy it first)`)
   const flag = (f: string) => {
@@ -116,11 +123,16 @@ async function create(argv: string[]) {
   requireDocker()
 
   const { mcpPort, webPort } = await allocatePorts(name, flag("--port") ? Number(flag("--port")) : undefined)
-  const inst: Instance = { name, mcpPort, webPort, tag: flag("--tag") || "latest", web: argv.includes("--web") }
+  const apiPort = flag("--api-port") ? Number(flag("--api-port")) : undefined
+  if (apiPort !== undefined) {
+    if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535) die("--api-port must be a port number")
+    if (apiPort === mcpPort || apiPort === webPort || !(await portFree(apiPort))) die(`port ${apiPort} is already in use`)
+  }
+  const inst: Instance = { name, mcpPort, webPort, apiPort, tag: flag("--tag") || "latest", web: argv.includes("--web") }
 
   const d = dir(name)
   mkdirSync(join(d, "config"), { recursive: true })
-  writeFileSync(join(d, "compose.yml"), renderCompose())
+  writeFileSync(join(d, "compose.yml"), renderCompose(apiPort))
   writeFileSync(join(d, ".env"), renderEnv(inst, process.env))
   if (inst.web) writeFileSync(join(d, ".web"), "")
   const cfg = flag("--config")
@@ -143,12 +155,16 @@ async function create(argv: string[]) {
   const seedDir = flag("--seed")
   if (seedDir) {
     if (!existsSync(seedDir)) rollback(`--seed path does not exist: ${seedDir}`)
+    // A worktree's .git is a pointer file to a host path the container can't see.
+    if (statSync(join(seedDir, ".git"), { throwIfNoEntry: false })?.isFile())
+      rollback(`--seed path is a git worktree — git would be broken inside the instance; seed from the main checkout`)
     if (!seed(inst, seedDir)) rollback(`seeding /workspace from ${seedDir} failed`)
   }
   if (compose(inst, ["-f", "compose.yml", "up", "-d"]).code !== 0) rollback("docker compose up failed")
 
   console.log(`\ninstance '${name}' is up.`)
   console.log(`  register:  ${registerLine(inst)}`)
+  if (inst.apiPort) console.log(`  api:       http://127.0.0.1:${inst.apiPort} (raw opencode backend)`)
   if (inst.web) console.log(`  web UI:    http://127.0.0.1:${webPort}`)
   console.log(`  destroy:   opencode-sandbox destroy ${name}`)
 }
@@ -205,7 +221,7 @@ switch (cmd) {
   default:
     console.log(`opencode-sandbox ${VERSION} — isolated opencode instances from prebuilt GHCR images
 
-  create <name> [--seed <dir>] [--config <file>] [--port <n>] [--tag <t>] [--web]
+  create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--tag <t>] [--web]
   list
   url <name>            print the 'claude mcp add' line for an instance
   destroy <name> [--yes]

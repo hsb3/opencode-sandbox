@@ -31,8 +31,14 @@ opencode-sandbox create scratch --seed ./my-project --config ./opencode.jsonc
 ```
 
 `--seed` copies a directory into the fresh workspace before the instance first
-starts; `--config` places an `opencode.jsonc` for that instance alone. Both are
-optional.
+starts (`.git` history included; `.DS_Store` files excluded); `--config` places
+an `opencode.jsonc` for that instance alone. Both are optional. The workspace
+is a copy, not a bind mount — edits inside the instance never touch the seed
+directory.
+
+`--api-port <n>` additionally publishes the raw opencode backend on
+`127.0.0.1:<n>`, so a local opencode client can attach to the same instance
+an agent is driving over MCP.
 
 Register it with Claude Code. `create` prints this line, and `url` reprints it
 later:
@@ -57,8 +63,9 @@ bridge is the only interface.
 
 ## Security note
 
-The MCP bridge has no inbound authentication of its own. Anyone who can
-reach its port gets the full opencode tool surface — reading and writing
+Neither the MCP bridge nor the backend published by `--api-port` has inbound
+authentication of its own. Anyone who can reach either port gets the full
+opencode tool surface — reading and writing
 files and running shell commands inside that instance's `/workspace`. The
 published port is bound to `127.0.0.1` by default; keep it that way. Do not
 widen it to `0.0.0.0` or put it behind a public reverse proxy without a real
