@@ -6,15 +6,17 @@ import { createServer } from "node:net"
 import {
   NAME_RE,
   basePort,
+  parsePublish,
   fetchLine,
   projectName,
   registerLine,
   renderCompose,
   renderEnv,
   type Instance,
+  type Publish,
 } from "./compose.ts"
 
-const VERSION = "0.1.2"
+const VERSION = "0.2.0"
 const ROOT = join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "opencode-sandbox")
 
 function die(msg: string): never {
@@ -53,6 +55,7 @@ function load(name: string): Instance {
     mcpPort: Number(env.MCP_PORT),
     webPort: Number(env.WEB_PORT),
     apiPort: env.API_PORT ? Number(env.API_PORT) : undefined,
+    publish: env.PUBLISH ? env.PUBLISH.split(",").map(parsePublish) : [],
     tag: env.OC_TAG || "latest",
     web: existsSync(join(d, ".web")),
   }
@@ -115,13 +118,15 @@ function seed(inst: Instance, from: string): boolean {
 
 async function create(argv: string[]) {
   const name = argv[0]
-  if (!name || name.startsWith("-")) die("usage: opencode-sandbox create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--web]")
+  if (!name || name.startsWith("-"))
+    die("usage: opencode-sandbox create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--publish <port>] [--web]")
   if (!NAME_RE.test(name)) die(`invalid name '${name}' — use lowercase letters, digits and hyphens (max 31)`)
   if (existsSync(dir(name))) die(`instance '${name}' already exists (destroy it first)`)
   const flag = (f: string) => {
     const i = argv.indexOf(f)
     return i === -1 ? undefined : argv[i + 1]
   }
+  const flags = (f: string) => argv.flatMap((a, i) => (a === f ? [argv[i + 1] ?? ""] : []))
   requireDocker()
 
   const { mcpPort, webPort } = await allocatePorts(name, flag("--port") ? Number(flag("--port")) : undefined)
@@ -130,11 +135,27 @@ async function create(argv: string[]) {
     if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535) die("--api-port must be a port number")
     if (apiPort === mcpPort || apiPort === webPort || !(await portFree(apiPort))) die(`port ${apiPort} is already in use`)
   }
-  const inst: Instance = { name, mcpPort, webPort, apiPort, tag: flag("--tag") || "latest", web: argv.includes("--web") }
+  // Every host-side port this instance will occupy, so --publish can be checked
+  // against the ones already chosen as well as against the rest of the machine.
+  const claimed = new Set([mcpPort, webPort, ...(apiPort ? [apiPort] : [])])
+  const publish: Publish[] = []
+  for (const spec of flags("--publish")) {
+    let p: Publish
+    try {
+      p = parsePublish(spec)
+    } catch (e) {
+      die((e as Error).message)
+    }
+    if (claimed.has(p.host) || !(await portFree(p.host))) die(`--publish host port ${p.host} is already in use`)
+    claimed.add(p.host)
+    publish.push(p)
+  }
+
+  const inst: Instance = { name, mcpPort, webPort, apiPort, publish, tag: flag("--tag") || "latest", web: argv.includes("--web") }
 
   const d = dir(name)
   mkdirSync(join(d, "config"), { recursive: true })
-  writeFileSync(join(d, "compose.yml"), renderCompose(apiPort))
+  writeFileSync(join(d, "compose.yml"), renderCompose(apiPort, publish))
   writeFileSync(join(d, ".env"), renderEnv(inst, process.env))
   if (inst.web) writeFileSync(join(d, ".web"), "")
   const cfg = flag("--config")
@@ -167,6 +188,7 @@ async function create(argv: string[]) {
   console.log(`\ninstance '${name}' is up.`)
   console.log(`  register:  ${registerLine(inst)}`)
   if (inst.apiPort) console.log(`  api:       http://127.0.0.1:${inst.apiPort} (raw opencode backend)`)
+  for (const p of publish) console.log(`  published: 127.0.0.1:${p.host} -> container port ${p.container}`)
   if (inst.web) console.log(`  web UI:    http://127.0.0.1:${webPort}`)
   console.log(`  destroy:   opencode-sandbox destroy ${name}`)
 }
@@ -243,7 +265,8 @@ switch (cmd) {
   default:
     console.log(`opencode-sandbox ${VERSION} — isolated opencode instances from prebuilt GHCR images
 
-  create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>] [--tag <t>] [--web]
+  create <name> [--seed <dir>] [--config <file>] [--port <n>] [--api-port <n>]
+                [--publish <container-port> | --publish <host-port>:<container-port>] ... [--tag <t>] [--web]
   list
   url <name>            print the 'claude mcp add' line for an instance
   fetch-url <name>      print the credential-free 'git fetch' line that pulls a branch out

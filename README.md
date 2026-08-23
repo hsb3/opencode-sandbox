@@ -42,6 +42,17 @@ directory.
 `127.0.0.1:<n>`, so a local opencode client can attach to the same instance
 an agent is driving over MCP.
 
+`--publish` does the same for anything else running inside the instance — a
+dev server, a database — so you can open what the agent just built. It repeats,
+and takes docker's `-p` order:
+
+```
+opencode-sandbox create scratch --publish 5173 --publish 18090:8090
+```
+
+Bare `5173` reuses the same number on the host; `18090:8090` remaps when the
+host port is taken. Ports are fixed at create time and bound to `127.0.0.1`.
+
 Register it with Claude Code. `create` prints this line, and `url` reprints it
 later:
 
@@ -87,7 +98,8 @@ bridge is the only interface.
 ## Security note
 
 Neither the MCP bridge nor the backend published by `--api-port` has inbound
-authentication of its own. Anyone who can reach either port gets the full
+authentication of its own, and `--publish` exposes whatever the agent chose to
+run. Anyone who can reach one of these ports gets the full
 opencode tool surface — reading and writing
 files and running shell commands inside that instance's `/workspace`. The
 published port is bound to `127.0.0.1` by default; keep it that way. Do not

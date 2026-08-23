@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { NAME_RE, basePort, fetchLine, projectName, registerLine, renderCompose, renderEnv } from "../src/compose.ts"
+import { NAME_RE, basePort, fetchLine, parsePublish, projectName, registerLine, renderCompose, renderEnv } from "../src/compose.ts"
 
 const inst = { name: "demo", mcpPort: 4310, webPort: 4311, tag: "latest", web: false }
 
@@ -30,7 +30,7 @@ test("service is named opencode — the web image's baked nginx.conf proxies to 
 })
 
 test("published ports stay bound to loopback (the bridge has no inbound auth)", () => {
-  for (const y of [renderCompose(), renderCompose(4097)])
+  for (const y of [renderCompose(), renderCompose(4097), renderCompose(undefined, [{ host: 5173, container: 5173 }])])
     for (const line of y.split("\n").filter((l) => l.includes("ports:"))) expect(line).toContain("127.0.0.1:")
 })
 
@@ -43,6 +43,33 @@ test("api port is published only when asked for, and lands on the backend", () =
   expect(renderCompose(4400)).toContain('ports: ["127.0.0.1:${API_PORT}:4097"]')
   expect(renderEnv({ ...inst, apiPort: 4400 }, {})).toContain("API_PORT=4400")
   expect(renderEnv(inst, {})).not.toContain("API_PORT")
+})
+
+test("--publish takes docker's -p order and defaults the host port to the container port", () => {
+  expect(parsePublish("5173")).toEqual({ host: 5173, container: 5173 })
+  expect(parsePublish("15173:5173")).toEqual({ host: 15173, container: 5173 })
+  for (const bad of ["", "0", "abc", "5173:", "70000", "1:2:3", "-1"]) expect(() => parsePublish(bad)).toThrow()
+})
+
+test("published ports appear only when asked for, alongside the api port", () => {
+  // Only the opencode service — mcp and web publish unconditionally.
+  expect(renderCompose().split("\n  mcp:")[0]).not.toContain("ports:")
+  expect(renderCompose(undefined, [{ host: 15173, container: 5173 }, { host: 8090, container: 8090 }])).toContain(
+    'ports: ["127.0.0.1:15173:5173", "127.0.0.1:8090:8090"]',
+  )
+  expect(renderCompose(4400, [{ host: 8090, container: 8090 }])).toContain(
+    'ports: ["127.0.0.1:${API_PORT}:4097", "127.0.0.1:8090:8090"]',
+  )
+})
+
+test("published ports round-trip through .env so a reload sees them", () => {
+  const env = renderEnv({ ...inst, publish: [{ host: 15173, container: 5173 }, { host: 8090, container: 8090 }] }, {})
+  expect(env).toContain("PUBLISH=15173:5173,8090:8090")
+  expect(env.match(/PUBLISH=(.*)/)![1]!.split(",").map(parsePublish)).toEqual([
+    { host: 15173, container: 5173 },
+    { host: 8090, container: 8090 },
+  ])
+  expect(renderEnv(inst, {})).not.toContain("PUBLISH")
 })
 
 test("web is behind a profile so the MCP bridge is the default surface", () => {
