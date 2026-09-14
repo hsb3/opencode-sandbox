@@ -1,0 +1,3 @@
+include:
+  - path: ./deploy/local/compose.yaml
+    project_directory: ./deploy/local

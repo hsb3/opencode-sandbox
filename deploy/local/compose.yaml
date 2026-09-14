@@ -1,0 +1,47 @@
+# Rendered from src/compose.ts by `bun deploy/local/render.ts` — edit there, not here.
+services:
+  opencode:
+    image: ghcr.io/hsb3/opencode/backend:${OC_TAG}
+    env_file: [.env]
+    volumes:
+      - workspace:/workspace
+      - data:/root/.local/share/opencode
+      - cache:/root/.cache/opencode
+      - state:/root/.local/state/opencode
+      - ./config:/root/.config/opencode
+    working_dir: /workspace
+    environment:
+      # /root, not /workspace — otherwise .npm/.claude/etc. pollute the repo.
+      HOME: /root
+      OPENCODE_DISABLE_EMBEDDED_WEB_UI: "1"
+      OPENCODE_DISABLE_CHANNEL_DB: "1"
+      OPENCODE_DISABLE_AUTOUPDATE: "1"
+      XDG_DATA_HOME: /root/.local/share
+      XDG_CONFIG_HOME: /root/.config
+      XDG_CACHE_HOME: /root/.cache
+      XDG_STATE_HOME: /root/.local/state
+    restart: unless-stopped
+
+  # No inbound auth — see README's security note. Host bind stays on 127.0.0.1.
+  mcp:
+    image: ghcr.io/hsb3/opencode/mcp:${OC_TAG}
+    entrypoint: ["supergateway"]
+    command: ["--stdio", "opencode-mcp", "--outputTransport", "streamableHttp", "--port", "8000"]
+    environment:
+      OPENCODE_BASE_URL: http://opencode:4097
+    ports: ["127.0.0.1:${MCP_PORT}:8000"]
+    depends_on: [opencode]
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/hsb3/opencode/web:${OC_TAG}
+    profiles: [web]
+    ports: ["127.0.0.1:${WEB_PORT}:80"]
+    depends_on: [opencode]
+    restart: unless-stopped
+
+volumes:
+  workspace:
+  data:
+  cache:
+  state:
