@@ -73,6 +73,10 @@ opencode-sandbox destroy scratch --yes
 `destroy` removes the containers and their volumes, including the workspace —
 get anything worth keeping out first (see below).
 
+Deployment guides: [deploy/local/README.md](deploy/local/README.md) runs the same
+stack by hand with Docker Compose; [deploy/railway/README.md](deploy/railway/README.md)
+says why there is no hosted target.
+
 ## Getting work out
 
 No credentials ever enter the instance; the host reaches in instead. For work

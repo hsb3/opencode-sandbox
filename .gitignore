@@ -2,3 +2,5 @@ dist/
 node_modules/
 *.bun-build
 .kata.local.toml
+deploy/local/.env
+deploy/local/config/
