@@ -74,7 +74,7 @@ opencode-sandbox destroy scratch --yes
 get anything worth keeping out first (see below).
 
 Deployment guides: [deploy/local/README.md](deploy/local/README.md) runs the same
-stack by hand with Docker Compose; [deploy/railway/README.md](deploy/railway/README.md)
+stack by hand (`make local-up` from the repo root); [deploy/railway/README.md](deploy/railway/README.md)
 says why there is no hosted target.
 
 ## Getting work out
