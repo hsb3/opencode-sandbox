@@ -18,4 +18,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: cp deploy/local/.env.example deploy/local/.env
-      - run: docker compose config --quiet
+      - run: docker compose -f deploy/local/compose.yaml config --quiet

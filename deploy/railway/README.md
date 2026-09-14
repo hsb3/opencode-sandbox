@@ -12,8 +12,8 @@ exactly that on a public domain, which the project forbids.
 The images are not built here either; they come from the
 [hsb3/opencode](https://github.com/hsb3/opencode) fork.
 
-What local CI proves instead: `docker compose config --quiet` validates the
-stack through the root `compose.yaml` shim, and `bun test` proves
+What local CI proves instead: `docker compose -f deploy/local/compose.yaml
+config --quiet` validates the stack, and `bun test` proves
 `deploy/local/compose.yaml` is what the CLI renders.
 
 If a hosted instance is ever wanted, the precondition is an auth layer in front

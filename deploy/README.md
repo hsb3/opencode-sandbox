@@ -5,7 +5,7 @@ target = new directory here.
 
 | Target | What it is |
 | --- | --- |
-| [local/](local/README.md) | the opencode stack on your own Docker daemon, without the CLI: compose file, `.env.example`, up/verify/down |
+| [local/](local/README.md) | the opencode stack on your own Docker daemon, without the CLI: compose file, `.env.example`, `make local-up` / `local-verify` / `local-down` from the root |
 | [railway/](railway/README.md) | why there is no hosted target (the stack's only interface is unauthenticated by design) |
 
 Nothing here builds an image. All three images (`backend`, `mcp`, `web`) are
